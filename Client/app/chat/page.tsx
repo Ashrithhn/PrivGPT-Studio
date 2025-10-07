@@ -497,6 +497,28 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Load messages from localStorage on component mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedChat = JSON.parse(localStorage.getItem("chatHistory") || "[]");
+      if (savedChat.length > 0) {
+        // Convert timestamp strings back to Date objects
+        const messagesWithDates = savedChat.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+        setMessages(messagesWithDates);
+      }
+    }
+  }, []);
+
+  // Save messages to localStorage whenever messages change
+  useEffect(() => {
+    if (typeof window !== "undefined" && messages.length > 0) {
+      localStorage.setItem("chatHistory", JSON.stringify(messages));
+    }
+  }, [messages]);
+
   useEffect(() => {
     const fetchModels = async () => {
       try {
@@ -588,7 +610,6 @@ export default function ChatPage() {
       // ✅ If no previous sessions, just show welcome
       if (storedSessions.length === 0) {
         setSessionId(welcomeSession.id); // "1"
-        setMessages([welcomeMessage]);
         setChatSessions([welcomeSession]);
         if (newChatSessionBtnRef.current) {
           newChatSessionBtnRef.current.disabled = true;
@@ -625,44 +646,7 @@ export default function ChatPage() {
             }
           );
 
-          // ✅ Always keep welcomeSession first in the list
           setChatSessions([...transformedSessions]);
-
-          // ✅ Only reset to welcomeSession if you are currently on it
-          if (sessionId === welcomeSession.id || !sessionId) {
-            setSessionId(welcomeSession.id); // stays as "1"
-            if (newChatSessionBtnRef.current)
-              newChatSessionBtnRef.current.disabled = true;
-
-            // show only welcome message if welcome is selected
-            setMessages([welcomeMessage]);
-            return;
-          }
-
-          // ✅ Otherwise, load messages for currently active sessionId
-          const activeSession =
-            sessions.find((s: any) => s._id === sessionId) || sessions[0];
-          const formattedMessages: Message[] = activeSession.messages?.map(
-            (msg: any, index: number) => ({
-              id: msg.id || (index + 2).toString(),
-              content: msg.content,
-              role: msg.role,
-              timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-              ...(msg.uploaded_file
-                ? {
-                    file: {
-                      name: msg.uploaded_file.name,
-                      size: msg.uploaded_file.size,
-                      type: msg.uploaded_file.type,
-                      file: msg.uploaded_file.file,
-                    } as UploadedFile,
-                  }
-                : {}),
-            })
-          );
-
-          // ✅ Put welcomeMessage on top of history
-          setMessages([welcomeMessage, ...(formattedMessages || [])]);
         }
       } catch (error) {
         console.error("Failed to fetch session history:", error);
@@ -670,7 +654,7 @@ export default function ChatPage() {
     };
 
     fetchChatSessionHistory();
-  }, [sessionId, editedName]);
+  }, [editedName]);
   useEffect(() => {
     if (newChatSessionBtnRef.current && !showSplash) {
       newChatSessionBtnRef.current.disabled = true;
@@ -1214,7 +1198,14 @@ export default function ChatPage() {
       }
 
       setSessionId(id);
+      await fetchMessagesFromBackend(id);
+    } catch (error) {
+      console.error("Error switching chat session:", error);
+    }
+  };
 
+  const fetchMessagesFromBackend = async (id: string) => {
+    try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/chat/${id}`
       );
@@ -1253,7 +1244,7 @@ export default function ChatPage() {
 
       setMessages([newWelcomeMessage, ...formattedMessages]);
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      console.error("Error fetching messages from backend:", error);
     }
   };
 
@@ -1320,6 +1311,7 @@ export default function ChatPage() {
         "chat_sessions",
         JSON.stringify(filteredStoredSessions)
       );
+
 
       // Decide what to show next
       if (updatedSessions.length > 0) {
@@ -1800,7 +1792,10 @@ export default function ChatPage() {
                     suppressHydrationWarning
                     className="text-xs opacity-70 mt-1"
                   >
-                    {message.timestamp.toLocaleTimeString()}
+                    {message.timestamp instanceof Date 
+                      ? message.timestamp.toLocaleTimeString()
+                      : new Date(message.timestamp).toLocaleTimeString()
+                    }
                   </p>
                 </div>
               </div>
