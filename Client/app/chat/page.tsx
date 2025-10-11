@@ -91,7 +91,6 @@ type ChatSession = {
   id: string;
   sessionName: string;
   lastMessage: string;
-  created_at?: string;
 };
 
 interface UploadedFile {
@@ -103,9 +102,6 @@ interface UploadedFile {
 
 export default function ChatPage() {
   const { darkMode } = useTheme();
-  
-  // Debug: Log component mount
-  console.log("=== CHAT PAGE COMPONENT MOUNTED ===");
 
   // Loading dots animation component
   const LoadingDots = () => {
@@ -442,7 +438,7 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string>("1");
   const [status, setStatus] = useState("Online");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [latency, setLatency] = useState<string>("0");
+  const [latency, setLatency] = useState<string | null>("0");
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const initialLoadRef = useRef(true);
@@ -500,111 +496,71 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Helper function to maintain proper session ordering
-  const sortSessions = (sessions: ChatSession[]) => {
-    return sessions.sort((a, b) => {
-      // Welcome session (id "1") always comes first
-      if (a.id === "1") return -1;
-      if (b.id === "1") return 1;
-      
-      // For other sessions, sort by created_at (most recent first)
-      const aTime = new Date(a.created_at || 0).getTime();
-      const bTime = new Date(b.created_at || 0).getTime();
-      return bTime - aTime;
-    });
-  };
-
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Load messages from localStorage when sessionId changes (but not on initial mount)
+  // Load messages from localStorage when sessionId changes (but not during initial load)
   useEffect(() => {
-    console.log("useEffect triggered - sessionId:", sessionId, "isInitialLoad:", isInitialLoad, "initialLoadComplete:", initialLoadComplete, "initialLoadRef:", initialLoadRef.current);
-    if (typeof window !== "undefined" && sessionId && !initialLoadRef.current) {
-      console.log("=== useEffect MESSAGE LOADING START ===");
-      const savedChatsRaw = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-      console.log("useEffect - Loading messages for session:", sessionId, "Saved chats:", savedChatsRaw);
-      console.log("useEffect - Saved chats keys:", Object.keys(savedChatsRaw));
+    console.log("=== MESSAGE LOADING useEffect triggered ===");
+    console.log("Message useEffect - sessionId:", sessionId, "initialLoadComplete:", initialLoadComplete);
+    
+    // TEMPORARILY DISABLED - Handle all message loading in initial load function
+    // This prevents race conditions and conflicts
+    console.log("Message useEffect - DISABLED to prevent conflicts");
+    
+    // Only run this effect after initial load is complete AND when manually switching sessions
+    if (typeof window !== "undefined" && sessionId && initialLoadComplete && !initialLoadRef.current) {
+      console.log("Message useEffect - Loading messages for session:", sessionId);
       
-      // Check if savedChats is an array (legacy format) and convert to object
-      if (Array.isArray(savedChatsRaw)) {
-        console.log("Detected legacy array format, converting to object format");
-        const convertedChats: { [key: string]: any } = {};
-        savedChatsRaw.forEach((messages, index) => {
-          if (messages && messages.length > 0) {
-            convertedChats[index.toString()] = messages;
-          }
-        });
-        localStorage.setItem("chatHistory", JSON.stringify(convertedChats));
-        console.log("Converted to object format:", convertedChats);
-        // Try to load from converted format
-        if (convertedChats[sessionId] && convertedChats[sessionId].length > 0) {
-          const messagesWithDates = convertedChats[sessionId].map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          }));
-          setMessages(messagesWithDates);
-          return;
-        }
-      }
+      const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+      console.log("Message useEffect - savedChats for session", sessionId, ":", savedChats[sessionId]);
       
-      // Type guard to ensure savedChats is an object
-      const savedChats = savedChatsRaw as { [key: string]: any };
-      if (savedChats && typeof savedChats === 'object' && !Array.isArray(savedChats) && 
-          savedChats[sessionId] && Array.isArray(savedChats[sessionId]) && savedChats[sessionId].length > 0) {
-        // Convert timestamp strings back to Date objects
+      if (savedChats[sessionId] && savedChats[sessionId].length > 0) {
+        // Load saved messages
         const messagesWithDates = savedChats[sessionId].map((msg: any) => ({
           ...msg,
           timestamp: new Date(msg.timestamp)
         }));
-        console.log("Loaded messages for session:", sessionId, "Messages count:", messagesWithDates.length);
+        console.log("Message useEffect - Loading", messagesWithDates.length, "messages for session:", sessionId);
         setMessages(messagesWithDates);
       } else {
-        console.log("No saved messages found for session:", sessionId);
-        // Only set default messages if we don't already have messages loaded
-        if (messages.length === 0) {
-          if (sessionId === "1") {
-            setMessages([welcomeMessage]);
-          } else if (sessionId.startsWith("temp_")) {
-            const newWelcomeMessage = {
-              id: Date.now().toString(),
-              content: "Hello! I'm your AI assistant. How can I help you today?",
-              role: "assistant" as const,
-              timestamp: new Date(),
-            };
-            setMessages([newWelcomeMessage]);
-          }
+        // No saved messages, set appropriate default
+        console.log("Message useEffect - No saved messages, setting default for session:", sessionId);
+        if (sessionId === "1") {
+          setMessages([welcomeMessage]);
+        } else if (sessionId.startsWith("temp_")) {
+          const newWelcomeMessage = {
+            id: Date.now().toString(),
+            content: "Hello! I'm your AI assistant. How can I help you today?",
+            role: "assistant" as const,
+            timestamp: new Date(),
+          };
+          setMessages([newWelcomeMessage]);
         }
       }
-      console.log("=== useEffect MESSAGE LOADING END ===");
     }
-  }, [sessionId]);
+    console.log("=== MESSAGE LOADING useEffect end ===");
+  }, [sessionId, initialLoadComplete]);
 
-  // Save messages to localStorage whenever messages change (but not during session switching)
+  // Save messages to localStorage whenever messages change
   useEffect(() => {
     console.log("=== SAVE MESSAGES useEffect triggered ===");
-    console.log("Save useEffect - sessionId:", sessionId, "messages.length:", messages.length, "isInitialLoad:", isInitialLoad);
+    console.log("Save useEffect - sessionId:", sessionId, "messages.length:", messages.length, "initialLoadComplete:", initialLoadComplete);
     
-    if (typeof window !== "undefined" && messages.length > 0 && sessionId && !initialLoadRef.current) {
-      // Only save if we're not in the middle of switching sessions
+    if (typeof window !== "undefined" && messages.length > 0 && sessionId && initialLoadComplete) {
+      console.log("Save useEffect - Saving", messages.length, "messages for session:", sessionId);
       const savedChats: { [key: string]: any } = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-      
-      // Don't save if the current session already has the same messages (prevents overwriting during load)
-      if (savedChats[sessionId] && JSON.stringify(savedChats[sessionId]) === JSON.stringify(messages)) {
-        console.log("Save useEffect - Skipping save, messages are identical");
-        return;
-      }
-      
-      console.log("Save useEffect - Saving messages for session:", sessionId, "Messages count:", messages.length);
-      console.log("Save useEffect - Messages content:", messages);
+      console.log("Before saving - sessionId:", sessionId, "savedChats keys:", Object.keys(savedChats));
       savedChats[sessionId] = messages;
       localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-      console.log("Save useEffect - Saved messages for session:", sessionId);
-      console.log("Save useEffect - Updated savedChats:", savedChats);
+      console.log("After saving - sessionId:", sessionId, "Messages count:", messages.length);
+      console.log("Updated savedChats object keys:", Object.keys(savedChats));
+    } else {
+      console.log("Save useEffect - Skipping save - sessionId:", sessionId, "messages.length:", messages.length, "initialLoadComplete:", initialLoadComplete);
     }
     console.log("=== SAVE MESSAGES useEffect end ===");
-  }, [messages]);
+  }, [messages, sessionId, initialLoadComplete]);
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -690,158 +646,103 @@ export default function ChatPage() {
 
   useEffect(() => {
     const fetchChatSessionHistory = async () => {
-      console.log("=== PAGE REFRESH DEBUG START ===");
+      console.log("=== SIMPLE INITIAL LOAD START ===");
       
-      // First, try to load chat sessions from localStorage
+      // Load chat sessions from localStorage
       const savedChatSessions = JSON.parse(
         localStorage.getItem("chatSessionsList") || "[]"
       );
       console.log("Initial load - savedChatSessions:", savedChatSessions);
       
       if (savedChatSessions.length > 0) {
-        // Sort sessions: welcome session first, then others by recent order
-        const sortedSessions = sortSessions(savedChatSessions);
-        console.log("Initial load - sortedSessions:", sortedSessions);
+        // Set chat sessions
+        setChatSessions(savedChatSessions);
         
-        setChatSessions(sortedSessions);
-        // Set the first session as active if no specific session is set
-        if (sortedSessions[0]) {
-          const firstSessionId = sortedSessions[0].id;
-          console.log("Initial load - Setting initial session:", firstSessionId);
-          
-          // Load messages for the first session
-          const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-          console.log("Initial load - All savedChats:", savedChats);
-          console.log("Initial load - savedChats for session", firstSessionId, ":", savedChats[firstSessionId]);
-          console.log("Initial load - savedChats keys:", Object.keys(savedChats));
-          
-          if (savedChats[firstSessionId] && savedChats[firstSessionId].length > 0) {
-            const messagesWithDates = savedChats[firstSessionId].map((msg: any) => ({
-              ...msg,
-              timestamp: new Date(msg.timestamp)
-            }));
-            console.log("Initial load - setting", messagesWithDates.length, "messages for session:", firstSessionId);
-            console.log("Initial load - messages content:", messagesWithDates);
-            setMessages(messagesWithDates);
-          } else if (firstSessionId.startsWith("temp_")) {
-            // Create welcome message for temp sessions
+        // Check for last accessed session
+        const lastAccessedSessionId = localStorage.getItem("lastAccessedSessionId");
+        console.log("Initial load - lastAccessedSessionId:", lastAccessedSessionId);
+        
+        // Determine which session to load
+        let sessionToLoad = null;
+        
+        // If we have a last accessed session and it exists in our sessions, use it
+        if (lastAccessedSessionId && savedChatSessions.find((s: ChatSession) => s.id === lastAccessedSessionId)) {
+          sessionToLoad = savedChatSessions.find((s: ChatSession) => s.id === lastAccessedSessionId);
+          console.log("Initial load - Using last accessed session:", sessionToLoad);
+        } else {
+          // Otherwise, use the first session (most recent)
+          sessionToLoad = savedChatSessions[0];
+          console.log("Initial load - Using first session (most recent):", sessionToLoad);
+        }
+        
+        // Load messages for the selected session
+        const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+        console.log("Initial load - savedChats for session", sessionToLoad.id, ":", savedChats[sessionToLoad.id]);
+        
+        if (savedChats[sessionToLoad.id] && savedChats[sessionToLoad.id].length > 0) {
+          // Load saved messages
+          const messagesWithDates = savedChats[sessionToLoad.id].map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }));
+          console.log("Initial load - Loading", messagesWithDates.length, "saved messages for session:", sessionToLoad.id);
+          console.log("Initial load - Messages content:", messagesWithDates);
+          setMessages(messagesWithDates);
+          console.log("Initial load - setMessages called with", messagesWithDates.length, "messages");
+        } else {
+          // No saved messages, set appropriate default
+          if (sessionToLoad.id === "1") {
+            console.log("Initial load - Setting welcome message for session:", sessionToLoad.id);
+            setMessages([welcomeMessage]);
+          } else if (sessionToLoad.id.startsWith("temp_")) {
             const newWelcomeMessage = {
               id: Date.now().toString(),
               content: "Hello! I'm your AI assistant. How can I help you today?",
               role: "assistant" as const,
               timestamp: new Date(),
             };
-            console.log("Initial load - setting welcome message for temp session:", firstSessionId);
+            console.log("Initial load - Setting temp welcome message for session:", sessionToLoad.id);
             setMessages([newWelcomeMessage]);
-          } else if (firstSessionId === "1") {
-            // Handle welcome session
-            console.log("Initial load - setting welcome message for welcome session");
-            setMessages([welcomeMessage]);
           }
-          
-          // Set session ID after loading messages to avoid conflicts
-          console.log("Initial load - Setting sessionId to:", firstSessionId);
-          setSessionId(firstSessionId);
         }
         
-        // Mark initial load as complete with a delay to ensure everything is settled
-        console.log("Initial load - Marking initial load as complete");
-        setTimeout(() => {
-          initialLoadRef.current = false;
-          setIsInitialLoad(false);
-          setInitialLoadComplete(true);
-          console.log("Initial load - All flags and ref set to false/true");
-        }, 200); // Increased delay to ensure all state updates are complete
-        console.log("=== PAGE REFRESH DEBUG END ===");
-        return;
-      }
-
-      const storedSessions = JSON.parse(
-        localStorage.getItem("chat_sessions") || "[]"
-      );
-
-      // ✅ If no previous sessions, just show welcome
-      if (storedSessions.length === 0) {
-        // Only create welcome session if it doesn't already exist
-        setChatSessions((prev) => {
-          const hasWelcome = prev.some(session => session.id === "1");
-          if (!hasWelcome) {
-            return [welcomeSession];
-          }
-          return prev;
-        });
-        setSessionId(welcomeSession.id); // "1"
+        // Set the session ID
+        setSessionId(sessionToLoad.id);
+        console.log("Initial load - Set sessionId to:", sessionToLoad.id);
+        
+      } else {
+        // No saved sessions, create welcome session
+        console.log("Initial load - No saved sessions, creating welcome session");
+        setChatSessions([welcomeSession]);
+        setSessionId("1");
         setMessages([welcomeMessage]);
-        if (newChatSessionBtnRef.current) {
-          newChatSessionBtnRef.current.disabled = true;
-        }
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL}/chat/history`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_ids: storedSessions }),
-          }
-        );
-
-        if (!response.ok) throw new Error("Failed to fetch session history");
-
-        const sessions = await response.json();
-
-        if (sessions.length > 0) {
-          const transformedSessions: ChatSession[] = sessions.map(
-            (session: any) => {
-              const lastMsg =
-                session.messages?.[session.messages.length - 1]?.content ||
-                welcomeSession.lastMessage;
-              return {
-                id: session._id,
-                created_at: session.created_at,
-                lastMessage: lastMsg,
-                sessionName: session.session_name || lastMsg,
-              };
-            }
-          );
-
-          setChatSessions([...transformedSessions]);
-        }
-      } catch (error) {
-        console.error("Failed to fetch session history:", error);
       }
       
-      // Mark initial load as complete with a delay
+      // Mark initial load as complete
       setTimeout(() => {
         initialLoadRef.current = false;
         setIsInitialLoad(false);
         setInitialLoadComplete(true);
-        console.log("Initial load (backend path) - All flags and ref set to false/true");
+        console.log("Initial load - All flags set to false/true");
       }, 200);
+      
+      console.log("=== SIMPLE INITIAL LOAD END ===");
     };
 
     fetchChatSessionHistory();
   }, [editedName]);
   useEffect(() => {
-    if (newChatSessionBtnRef.current && !showSplash) {
-      // Keep button disabled initially (like ChatGPT)
-      newChatSessionBtnRef.current.disabled = true;
+    // Always enable the New Chat button
+    if (newChatSessionBtnRef.current) {
+      newChatSessionBtnRef.current.disabled = false;
     }
   }, [showSplash]);
-  
-  useEffect(() => {
-    if (newChatSessionBtnRef.current) {
-      // Enable new chat button only when we have an active conversation AND not currently streaming/typing
-      const isInWelcomeSession = sessionId === "1";
-      const hasActiveConversation = messages.length > 1; // More than just welcome message
-      const isCurrentlyResponding = isTyping || isStreaming;
-      
-      // Enable only if we have an active conversation AND not currently getting a response
-      newChatSessionBtnRef.current.disabled = !hasActiveConversation || isCurrentlyResponding;
-    }
-  }, [chatSessions, sessionId, messages, isTyping, isStreaming]);
+   useEffect(() => {
+     // Always enable the New Chat button
+     if (newChatSessionBtnRef.current) {
+       newChatSessionBtnRef.current.disabled = false;
+     }
+   }, [chatSessions]);
 
   useEffect(() => {
     let wasOffline = false; // track previous state
@@ -908,25 +809,24 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage]);
     
-    // Disable new chat button immediately when user sends a message
-    if (newChatSessionBtnRef.current) {
-      newChatSessionBtnRef.current.disabled = true;
-    }
-    
-    // Track request start time for latency calculation
-    const requestStartTime = Date.now();
-    
-    // Track if we need to create a new session and what the effective session ID should be
-    let effectiveSessionId = sessionId;
-    let shouldCreateNewSession = false;
-    let sessionCreated = false; // Flag to prevent duplicate session creation
-    
-    // If this is the first user message in the welcome session, create a new temp session
+    // Update session name if this is the first user message in welcome session
     if (sessionId === "1" && messages.length === 1) {
-      // Create a new temporary session
-      effectiveSessionId = `temp_${Date.now()}`;
-      shouldCreateNewSession = true;
+      const newSessionName = userMessage.content.length > 30 
+        ? userMessage.content.substring(0, 30) + "..." 
+        : userMessage.content;
+      
+      setChatSessions((prev) => {
+        const updated = prev.map((session) => 
+          session.id === sessionId 
+            ? { ...session, sessionName: newSessionName, lastMessage: userMessage.content }
+            : session
+        );
+        // Save updated sessions to localStorage
+        localStorage.setItem("chatSessionsList", JSON.stringify(updated));
+        return updated;
+      });
     }
+    
     // Update session name if this is the first user message in a temp session
     else if (sessionId.startsWith("temp_") && messages.length === 1) {
       const newSessionName = userMessage.content.length > 30 
@@ -963,7 +863,7 @@ export default function ChatPage() {
     formData.append("model_type", selectedModelType);
     formData.append("model_name", selectedModel);
     formData.append("timestamp", userMessage.timestamp.toISOString());
-    if (effectiveSessionId) formData.append("session_id", effectiveSessionId);
+    if (sessionId) formData.append("session_id", sessionId);
 
     // append mention ids
     mentionIds.forEach((id) => formData.append("mention_session_ids[]", id));
@@ -990,11 +890,10 @@ export default function ChatPage() {
         const data = await response.json();
         const bot_response = data.response || "No Reply";
 
-        // Handle session ID from backend (for backend sessions only)
-        if (data.session_id && !effectiveSessionId.startsWith("temp_")) {
+        if (sessionId === "1" && data.session_id) {
           // Save current messages to the old session before switching
           const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-          savedChats[effectiveSessionId] = messages;
+          savedChats["1"] = messages;
           localStorage.setItem("chatHistory", JSON.stringify(savedChats));
           
           setSessionId(data.session_id);
@@ -1014,35 +913,6 @@ export default function ChatPage() {
           timestamp: new Date(data.timestamp),
         };
 
-        // Create new session if needed (after successful API call)
-        if (shouldCreateNewSession) {
-          // Create a new chat session object
-          const newChatSession = {
-            id: effectiveSessionId,
-            created_at: new Date().toISOString(),
-            lastMessage: userMessage.content,
-            sessionName: userMessage.content.length > 30 
-              ? userMessage.content.substring(0, 30) + "..." 
-              : userMessage.content,
-          };
-
-          // Add the new session to the list (maintain proper ordering)
-          setChatSessions((prev) => {
-            const updated = [newChatSession, ...prev];
-            const sortedUpdated = sortSessions(updated);
-            localStorage.setItem("chatSessionsList", JSON.stringify(sortedUpdated));
-            return sortedUpdated;
-          });
-
-          // Switch to the new session
-          setSessionId(effectiveSessionId);
-
-          // Reset the welcome session to its original state
-          const welcomeSavedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-          welcomeSavedChats["1"] = [welcomeMessage];
-          localStorage.setItem("chatHistory", JSON.stringify(welcomeSavedChats));
-        }
-
         // Fallback detection for local model failures
         if (data.fallback_used) {
           fallbackToGemini(bot_response);
@@ -1055,25 +925,16 @@ export default function ChatPage() {
           fallbackToGemini(bot_response);
         }
 
-        // Button will be enabled automatically by useEffect when response is complete
+        if (
+          newChatSessionBtnRef.current &&
+          newChatSessionBtnRef.current.disabled
+        ) {
+          newChatSessionBtnRef.current.disabled = false;
+        }
 
-        setMessages((prev) => {
-          const updatedMessages = [...prev, assistantMessage];
-          
-          // If we need to create a new session, save the updated messages to the new session
-          if (shouldCreateNewSession) {
-            const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-            savedChats[effectiveSessionId] = updatedMessages;
-            localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-          }
-          
-          return updatedMessages;
-        });
+        setMessages((prev) => [...prev, assistantMessage]);
         setIsTyping(false);
-        const calculatedLatency = Date.now() - requestStartTime;
-        const latencyValue = data.latency ? data.latency.toString() : calculatedLatency.toString();
-        console.log("Setting latency:", latencyValue, "from data.latency:", data.latency, "calculated:", calculatedLatency);
-        setLatency(latencyValue);
+        setLatency(data.latency.toString());
       } catch (error) {
         console.error("Failed to receive response from AI", error);
         setIsTyping(false);
@@ -1110,9 +971,8 @@ export default function ChatPage() {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let streamedContent = "";
-      let finalSessionId = effectiveSessionId;
+      let finalSessionId = sessionId;
       let latencyValue = "0";
-      const streamingStartTime = Date.now();
 
       if (reader) {
         while (true) {
@@ -1129,7 +989,7 @@ export default function ChatPage() {
 
                 switch (data.type) {
                   case "session_info":
-                    if (data.session_id && data.session_id !== effectiveSessionId && !effectiveSessionId.startsWith("temp_")) {
+                    if (data.session_id && data.session_id !== sessionId) {
                       finalSessionId = data.session_id;
                     }
                     break;
@@ -1156,11 +1016,10 @@ export default function ChatPage() {
                     break;
 
                   case "complete":
-                    // Handle session ID from backend (for backend sessions only)
-                    if (data.session_id && !effectiveSessionId.startsWith("temp_")) {
+                    if (data.session_id && sessionId === "1") {
                       // Save current messages to the old session before switching
                       const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-                      savedChats[effectiveSessionId] = messages;
+                      savedChats["1"] = messages;
                       localStorage.setItem("chatHistory", JSON.stringify(savedChats));
                       
                       setSessionId(data.session_id);
@@ -1176,8 +1035,8 @@ export default function ChatPage() {
                     }
 
                     // Update final message with timestamp
-                    setMessages((prev) => {
-                      const updatedMessages = prev.map((msg) =>
+                    setMessages((prev) =>
+                      prev.map((msg) =>
                         msg.id === tempAssistantMessage.id
                           ? {
                               ...msg,
@@ -1185,20 +1044,10 @@ export default function ChatPage() {
                               timestamp: new Date(data.timestamp),
                             }
                           : msg
-                      );
-                      
-                      // If we need to create a new session, save the updated messages to the new session
-                      if (shouldCreateNewSession) {
-                        const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-                        savedChats[effectiveSessionId] = updatedMessages;
-                        localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-                      }
-                      
-                      return updatedMessages;
-                    });
+                      )
+                    );
 
-                    const calculatedLatency = Date.now() - streamingStartTime;
-                    latencyValue = data.latency ? data.latency.toString() : calculatedLatency.toString();
+                    latencyValue = data.latency?.toString() || "0";
                     break;
 
                   case "error":
@@ -1221,7 +1070,12 @@ export default function ChatPage() {
         }
       }
 
-      // Button will be enabled automatically by useEffect when streaming is complete
+      if (
+        newChatSessionBtnRef.current &&
+        newChatSessionBtnRef.current.disabled
+      ) {
+        newChatSessionBtnRef.current.disabled = false;
+      }
 
       // Fallback detection after streaming
       if (
@@ -1233,48 +1087,15 @@ export default function ChatPage() {
         fallbackToGemini(streamedContent);
       }
 
-      // Create new session if needed (after successful streaming)
-      if (shouldCreateNewSession) {
-        // Create a new chat session object
-        const newChatSession = {
-          id: effectiveSessionId,
-          created_at: new Date().toISOString(),
-          lastMessage: userMessage.content,
-          sessionName: userMessage.content.length > 30 
-            ? userMessage.content.substring(0, 30) + "..." 
-            : userMessage.content,
-        };
-
-        // Add the new session to the list (maintain proper ordering)
-        setChatSessions((prev) => {
-          const updated = [newChatSession, ...prev];
-          const sortedUpdated = sortSessions(updated);
-          localStorage.setItem("chatSessionsList", JSON.stringify(sortedUpdated));
-          return sortedUpdated;
-        });
-
-        // Switch to the new session
-        setSessionId(effectiveSessionId);
-        
-        // Mark session as created to prevent duplicate creation in error handling
-        sessionCreated = true;
-
-        // Reset the welcome session to its original state
-        const welcomeSavedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-        welcomeSavedChats["1"] = [welcomeMessage];
-        localStorage.setItem("chatHistory", JSON.stringify(welcomeSavedChats));
-      }
-
       setIsStreaming(false);
       setAbortController(null);
-      console.log("Setting streaming latency:", latencyValue);
       setLatency(latencyValue);
     } catch (error: any) {
       if (error.name === "AbortError") {
         console.log("Generation was stopped by user");
         // Update the temp message to show it was stopped
-        setMessages((prev) => {
-          const updatedMessages = prev.map((msg) =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === tempAssistantMessage.id
               ? {
                   ...msg,
@@ -1282,112 +1103,22 @@ export default function ChatPage() {
                     (msg.content || "") + "\n\n[Generation stopped by user]",
                 }
               : msg
-          );
-          
-          // Check if we need to create a new session (only if not already created)
-          if (shouldCreateNewSession && effectiveSessionId !== sessionId && !sessionCreated) {
-            console.log("Creating new session for interrupted generation");
-            
-            // Create new session object
-            const newChatSession: ChatSession = {
-              id: effectiveSessionId,
-              created_at: new Date().toISOString(),
-              lastMessage: updatedMessages[updatedMessages.length - 1]?.content || "Generation stopped",
-              sessionName: updatedMessages[1]?.content.length > 30 
-                ? updatedMessages[1].content.substring(0, 30) + "..." 
-                : updatedMessages[1]?.content || "New Chat",
-            };
-
-            // Add the new session to the list (maintain proper ordering)
-            setChatSessions((prev) => {
-              const updated = [newChatSession, ...prev];
-              const sortedUpdated = sortSessions(updated);
-              localStorage.setItem("chatSessionsList", JSON.stringify(sortedUpdated));
-              return sortedUpdated;
-            });
-
-            // Switch to the new session
-            setSessionId(effectiveSessionId);
-            
-            // Mark session as created
-            sessionCreated = true;
-
-            // Reset the welcome session to its original state
-            const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-            savedChats["1"] = [welcomeMessage];
-            localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-          }
-          
-          // Save the updated messages to localStorage immediately
-          if (typeof window !== "undefined") {
-            const currentSessionId = shouldCreateNewSession ? effectiveSessionId : sessionId;
-            const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-            savedChats[currentSessionId] = updatedMessages;
-            localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-            console.log("Saved interrupted generation messages for session:", currentSessionId);
-          }
-          
-          return updatedMessages;
-        });
+          )
+        );
       } else {
         console.error("Failed to receive response from AI", error);
 
         // Update the temp message with error
-        setMessages((prev) => {
-          const updatedMessages = prev.map((msg) =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === tempAssistantMessage.id
               ? {
                   ...msg,
                   content: "Failed to get response from AI. Please try again.",
                 }
               : msg
-          );
-          
-          // Check if we need to create a new session (only if not already created)
-          if (shouldCreateNewSession && effectiveSessionId !== sessionId && !sessionCreated) {
-            console.log("Creating new session for failed generation");
-            
-            // Create new session object
-            const newChatSession: ChatSession = {
-              id: effectiveSessionId,
-              created_at: new Date().toISOString(),
-              lastMessage: updatedMessages[updatedMessages.length - 1]?.content || "Generation failed",
-              sessionName: updatedMessages[1]?.content.length > 30 
-                ? updatedMessages[1].content.substring(0, 30) + "..." 
-                : updatedMessages[1]?.content || "New Chat",
-            };
-
-            // Add the new session to the list (maintain proper ordering)
-            setChatSessions((prev) => {
-              const updated = [newChatSession, ...prev];
-              const sortedUpdated = sortSessions(updated);
-              localStorage.setItem("chatSessionsList", JSON.stringify(sortedUpdated));
-              return sortedUpdated;
-            });
-
-            // Switch to the new session
-            setSessionId(effectiveSessionId);
-            
-            // Mark session as created
-            sessionCreated = true;
-
-            // Reset the welcome session to its original state
-            const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-            savedChats["1"] = [welcomeMessage];
-            localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-          }
-          
-          // Save the updated messages to localStorage immediately
-          if (typeof window !== "undefined") {
-            const currentSessionId = shouldCreateNewSession ? effectiveSessionId : sessionId;
-            const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-            savedChats[currentSessionId] = updatedMessages;
-            localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-            console.log("Saved error messages for session:", currentSessionId);
-          }
-          
-          return updatedMessages;
-        });
+          )
+        );
       }
 
       setIsStreaming(false);
@@ -1422,84 +1153,14 @@ export default function ChatPage() {
   };
 
   const handleClearChatSession = async () => {
-    try {
-      // Handle temporary sessions (start with "temp_") locally
-      if (sessionId.startsWith("temp_")) {
-        console.log("Clearing temporary session locally:", sessionId);
-        
-        // Reset messages with welcome message
-        const newWelcomeMessage = {
-          id: Date.now().toString(),
-          content: "Hello! I'm your AI assistant. How can I help you today?",
-          role: "assistant" as const,
-          timestamp: new Date(),
-        };
-        setMessages([newWelcomeMessage]);
-
-        // Update localStorage
-        const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-        savedChats[sessionId] = [newWelcomeMessage];
-        localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-
-        // Update session name and last message
-        setChatSessions((prev) => {
-          const updated = prev.map((session) => 
-            session.id === sessionId 
-              ? { ...session, sessionName: "New Chat", lastMessage: "Hello! I'm your AI assistant. How can I help you today?" }
-              : session
-          );
-          localStorage.setItem("chatSessionsList", JSON.stringify(updated));
-          return updated;
-        });
-
-        toast.success("Chat cleared successfully!");
-        setClearChatSessionModal(false);
-        return;
-      }
-
-      // Handle welcome session locally
-      if (sessionId === "1") {
-        console.log("Clearing welcome session locally");
-        
-        // Reset messages with welcome message
-        setMessages([welcomeMessage]);
-
-        // Update localStorage
-        const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-        savedChats["1"] = [welcomeMessage];
-        localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-
-        toast.success("Chat cleared successfully!");
-        setClearChatSessionModal(false);
-        return;
-      }
-
-      // Handle backend sessions
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/clear`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ session_id: sessionId }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to clear chat session");
-      }
-
-      toast.success("Chat cleared successfully!");
-
-      // Reset messages with welcome message
-      setMessages([welcomeMessage]);
-    } catch (error) {
-      console.error("Error clearing session:", error);
-      toast.error("Failed to clear chat.");
-    } finally {
-      setClearChatSessionModal(false);
-    }
+    // Clear chat now means delete the chat session (like other AI platforms)
+    console.log("Clear chat - deleting session:", sessionId);
+    
+    // Use the existing delete functionality
+    await handleDeleteChatSession(sessionId);
+    
+    // Close the clear modal
+    setClearChatSessionModal(false);
   };
 
   const handleExportChatSession = () => {
@@ -1619,19 +1280,12 @@ export default function ChatPage() {
 
   const handleCurrentChatSession = async (id: string) => {
     try {
-      // Don't switch if it's the same session
-      if (sessionId === id) {
-        return;
-      }
-
-      console.log("Switching from session:", sessionId, "to session:", id);
-
       // First, save current session's messages before switching
-      if (messages.length > 0 && sessionId && sessionId !== id) {
+      if (messages.length > 0 && sessionId !== id) {
         const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
         savedChats[sessionId] = messages;
         localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-        console.log("Saved", messages.length, "messages for session:", sessionId);
+        console.log("Switching from session:", sessionId, "Saving", messages.length, "messages");
         
         // Also update the lastMessage in the sessions list
         setChatSessions((prev) => {
@@ -1645,22 +1299,28 @@ export default function ChatPage() {
         });
       }
 
-      // Set the new session ID first
-      setSessionId(id);
-
       // Handle welcome session (ID "1")
       if (id === "1") {
+        console.log("Switching to welcome session (ID 1)");
         // Check if we have saved messages for the welcome session
         const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+        console.log("Welcome session savedChats:", savedChats["1"]);
+        
         if (savedChats["1"] && savedChats["1"].length > 0) {
           const messagesWithDates = savedChats["1"].map((msg: any) => ({
             ...msg,
             timestamp: new Date(msg.timestamp)
           }));
+          console.log("Loading", messagesWithDates.length, "saved messages for welcome session");
           setMessages(messagesWithDates);
         } else {
+          console.log("No saved messages for welcome session, using default");
           setMessages([welcomeMessage]);
         }
+        setSessionId("1");
+        
+        // Track the last accessed session
+        localStorage.setItem("lastAccessedSessionId", "1");
         return;
       }
 
@@ -1668,7 +1328,8 @@ export default function ChatPage() {
       if (id.startsWith("temp_")) {
         // Check if we have local messages for this session
         const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-        console.log("Loading temp session:", id);
+        console.log("Loading temp session:", id, "Saved chats:", savedChats);
+        console.log("Looking for session ID:", id, "Available sessions:", Object.keys(savedChats));
         
         if (savedChats[id] && savedChats[id].length > 0) {
           // Load from localStorage
@@ -1676,19 +1337,40 @@ export default function ChatPage() {
             ...msg,
             timestamp: new Date(msg.timestamp)
           }));
-          console.log("Loaded", messagesWithDates.length, "messages for temp session:", id);
+          console.log("Loading messages for temp session:", id, "Messages count:", messagesWithDates.length);
           setMessages(messagesWithDates);
         } else {
-          console.log("No saved messages for temp session:", id, "Creating welcome message");
-          // Create a fresh welcome message for new temp sessions
-          const newWelcomeMessage = {
-            id: Date.now().toString(),
-            content: "Hello! I'm your AI assistant. How can I help you today?",
-            role: "assistant" as const,
-            timestamp: new Date(),
-          };
-          setMessages([newWelcomeMessage]);
+          console.log("No saved messages for temp session:", id, "Available sessions:", Object.keys(savedChats));
+          
+          // Check if this session exists in the chatSessions list
+          const sessionExists = chatSessions.some(session => session.id === id);
+          if (sessionExists) {
+            console.log("Session exists in chatSessions but no messages found. This might be a new session.");
+            // Create a fresh welcome message for new temp sessions
+            const newWelcomeMessage = {
+              id: Date.now().toString(),
+              content: "Hello! I'm your AI assistant. How can I help you today?",
+              role: "assistant" as const,
+              timestamp: new Date(),
+            };
+            setMessages([newWelcomeMessage]);
+          } else {
+            console.log("Session not found in chatSessions list");
+            // This shouldn't happen, but fallback to welcome message
+            const newWelcomeMessage = {
+              id: Date.now().toString(),
+              content: "Hello! I'm your AI assistant. How can I help you today?",
+              role: "assistant" as const,
+              timestamp: new Date(),
+            };
+            setMessages([newWelcomeMessage]);
+          }
         }
+        
+        setSessionId(id);
+        
+        // Track the last accessed session
+        localStorage.setItem("lastAccessedSessionId", id);
         return;
       }
 
@@ -1705,7 +1387,7 @@ export default function ChatPage() {
 
       // Check if we have local messages for this session first
       const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
-      console.log("Loading backend session:", id);
+      console.log("Loading backend session:", id, "Saved chats:", savedChats);
       
       if (savedChats[id] && savedChats[id].length > 0) {
         // Load from localStorage
@@ -1713,13 +1395,18 @@ export default function ChatPage() {
           ...msg,
           timestamp: new Date(msg.timestamp)
         }));
-        console.log("Loaded", messagesWithDates.length, "messages for backend session:", id);
+        console.log("Loading messages for backend session:", id, "Messages:", messagesWithDates);
         setMessages(messagesWithDates);
       } else {
         console.log("No local messages for backend session:", id, "Fetching from backend");
         // Fetch from backend if no local messages
         await fetchMessagesFromBackend(id);
       }
+      
+      setSessionId(id);
+      
+      // Track the last accessed session
+      localStorage.setItem("lastAccessedSessionId", id);
     } catch (error) {
       console.error("Error switching chat session:", error);
     }
@@ -1775,21 +1462,96 @@ export default function ChatPage() {
       const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
       savedChats[sessionId] = messages;
       localStorage.setItem("chatHistory", JSON.stringify(savedChats));
-      console.log("Saved", messages.length, "messages for session:", sessionId, "before switching to welcome session");
+      console.log("Saved", messages.length, "messages for session:", sessionId, "before creating new chat");
     }
 
-    // Always redirect to the welcome session (How can I help You?) since it's also an empty chat
-    console.log("Redirecting to welcome session (How can I help You?)");
-    setSessionId("1");
-    setMessages([welcomeMessage]);
+    // Check if there's already an empty "New Chat" session
+    const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+    const existingEmptySession = chatSessions.find(session => {
+      const sessionMessages = savedChats[session.id];
+      return session.sessionName === "New Chat" && 
+             sessionMessages && 
+             sessionMessages.length === 1 && 
+             sessionMessages[0].content === "Hello! I'm your AI assistant. How can I help you today?";
+    });
+
+    if (existingEmptySession) {
+      // Redirect to existing empty "New Chat" session
+      console.log("Found existing empty New Chat, redirecting to:", existingEmptySession.id);
+      setSessionId(existingEmptySession.id);
+      setMessages([{
+        id: Date.now().toString(),
+        content: "Hello! I'm your AI assistant. How can I help you today?",
+        role: "assistant" as const,
+        timestamp: new Date(),
+      }]);
+      
+      // Track the last accessed session
+      localStorage.setItem("lastAccessedSessionId", existingEmptySession.id);
+      
+      if (!isChatSessionsCollapsed)
+        setIsChatSessionsCollapsed(!isChatSessionsCollapsed);
+      
+      return;
+    }
+
+    // Check if there's an existing "How can I help You?" session (for new users)
+    const existingWelcomeSession = chatSessions.find(session => {
+      const sessionMessages = savedChats[session.id];
+      return session.id === "1" && 
+             session.sessionName === "How can I help You?" &&
+             sessionMessages && 
+             sessionMessages.length === 1 && 
+             sessionMessages[0].content === "Hello! I'm your AI assistant. How can I help you today?";
+    });
+
+    if (existingWelcomeSession) {
+      // Redirect to existing "How can I help You?" session
+      console.log("Found existing How can I help You session, redirecting to:", existingWelcomeSession.id);
+      setSessionId(existingWelcomeSession.id);
+      setMessages([welcomeMessage]);
+      
+      // Track the last accessed session
+      localStorage.setItem("lastAccessedSessionId", existingWelcomeSession.id);
+      
+      if (!isChatSessionsCollapsed)
+        setIsChatSessionsCollapsed(!isChatSessionsCollapsed);
+      
+      return;
+    }
+
+    // Create a new temporary chat session only if no empty "New Chat" exists
+    const newSessionId = `temp_${Date.now()}`;
+    const newChatSession = {
+      id: newSessionId,
+      sessionName: "New Chat",
+      lastMessage: "Hello! I'm your AI assistant. How can I help you today?",
+      created_at: new Date().toISOString(),
+    };
+
+    // Add the new session to the list (maintain proper ordering)
+    setChatSessions((prev) => {
+      const updated = [newChatSession, ...prev];
+      localStorage.setItem("chatSessionsList", JSON.stringify(updated));
+      return updated;
+    });
+
+    // Switch to the new session
+    setSessionId(newSessionId);
+    setMessages([{
+      id: Date.now().toString(),
+      content: "Hello! I'm your AI assistant. How can I help you today?",
+      role: "assistant" as const,
+      timestamp: new Date(),
+    }]);
+    
+    // Track the last accessed session
+    localStorage.setItem("lastAccessedSessionId", newSessionId);
     
     if (!isChatSessionsCollapsed)
       setIsChatSessionsCollapsed(!isChatSessionsCollapsed);
 
-    // Disable new chat button after switching to welcome session
-    if (newChatSessionBtnRef.current) {
-      newChatSessionBtnRef.current.disabled = true;
-    }
+    // Button state will be managed by useEffect
   };
 
   const handleRenameSession = (id: string) => {
@@ -1802,6 +1564,58 @@ export default function ChatPage() {
 
   const handleDeleteChatSession = async (id: string) => {
     try {
+      // Handle welcome session deletion - treat it like any other chat
+      if (id === "1") {
+        console.log("Deleting welcome session");
+        
+        // Remove from local state
+        const updatedSessions = chatSessions.filter(
+          (chatSession) => chatSession.id !== id
+        );
+        setChatSessions(updatedSessions);
+
+        // Remove from localStorage chat sessions list
+        localStorage.setItem("chatSessionsList", JSON.stringify(updatedSessions));
+
+        // Remove from localStorage chat history
+        const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+        delete savedChats[id];
+        localStorage.setItem("chatHistory", JSON.stringify(savedChats));
+
+        toast.success("Chat deleted successfully");
+
+        // Decide what to show next
+        if (updatedSessions.length > 0) {
+          // Switch to first session in queue
+          const firstSession = updatedSessions[0];
+          handleCurrentChatSession(firstSession.id);
+        } else {
+          // If no sessions left, restore the original welcome session
+          console.log("No sessions left, restoring original welcome session");
+          const restoredWelcomeSession = {
+            id: "1",
+            sessionName: "How can I help You?",
+            lastMessage: "Hello! I'm your AI assistant. How can I help you today?",
+            created_at: new Date().toISOString(),
+          };
+          
+          setChatSessions([restoredWelcomeSession]);
+          setSessionId("1");
+          setMessages([welcomeMessage]);
+          
+          // Reset welcome session in localStorage
+          const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+          savedChats["1"] = [welcomeMessage];
+          localStorage.setItem("chatHistory", JSON.stringify(savedChats));
+          localStorage.setItem("chatSessionsList", JSON.stringify([restoredWelcomeSession]));
+          localStorage.setItem("lastAccessedSessionId", "1");
+        }
+
+        // Close modal
+        setDeleteChatSessionModal(false);
+        return;
+      }
+      
       // Handle temporary sessions (start with "temp_") locally
       if (id.startsWith("temp_")) {
         console.log("Deleting temporary session locally:", id);
@@ -1828,14 +1642,25 @@ export default function ChatPage() {
           const firstSession = updatedSessions[0];
           handleCurrentChatSession(firstSession.id);
         } else {
-          // If no sessions left, fallback to welcome session
-          setChatSessions([welcomeSession]);
+          // If no sessions left, restore the original welcome session
+          console.log("No sessions left, restoring original welcome session");
+          const restoredWelcomeSession = {
+            id: "1",
+            sessionName: "How can I help You?",
+            lastMessage: "Hello! I'm your AI assistant. How can I help you today?",
+            created_at: new Date().toISOString(),
+          };
+          
+          setChatSessions([restoredWelcomeSession]);
           setSessionId("1");
           setMessages([welcomeMessage]);
-          // Disable new chat button when only welcome session exists (like ChatGPT)
-          if (newChatSessionBtnRef.current) {
-            newChatSessionBtnRef.current.disabled = true;
-          }
+          
+          // Reset welcome session in localStorage
+          const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+          savedChats["1"] = [welcomeMessage];
+          localStorage.setItem("chatHistory", JSON.stringify(savedChats));
+          localStorage.setItem("chatSessionsList", JSON.stringify([restoredWelcomeSession]));
+          localStorage.setItem("lastAccessedSessionId", "1");
         }
 
         // Close modal
@@ -1866,18 +1691,6 @@ export default function ChatPage() {
       );
       setChatSessions(updatedSessions);
 
-      // Remove from localStorage
-      const storedSessions: string[] = JSON.parse(
-        localStorage.getItem("chat_sessions") || "[]"
-      );
-      const filteredStoredSessions = storedSessions.filter(
-        (sessionId) => sessionId !== id
-      );
-      localStorage.setItem(
-        "chat_sessions",
-        JSON.stringify(filteredStoredSessions)
-      );
-
       // Remove from localStorage chat history
       const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
       delete savedChats[id];
@@ -1889,14 +1702,25 @@ export default function ChatPage() {
         const firstSession = updatedSessions[0];
         handleCurrentChatSession(firstSession.id);
       } else {
-        // If no sessions left, fallback to welcome session
-        setChatSessions([welcomeSession]);
+        // If no sessions left, restore the original welcome session
+        console.log("No sessions left, restoring original welcome session");
+        const restoredWelcomeSession = {
+          id: "1",
+          sessionName: "How can I help You?",
+          lastMessage: "Hello! I'm your AI assistant. How can I help you today?",
+          created_at: new Date().toISOString(),
+        };
+        
+        setChatSessions([restoredWelcomeSession]);
         setSessionId("1");
         setMessages([welcomeMessage]);
-        // Disable new chat button when only welcome session exists (like ChatGPT)
-        if (newChatSessionBtnRef.current) {
-          newChatSessionBtnRef.current.disabled = true;
-        }
+        
+        // Reset welcome session in localStorage
+        const savedChats = JSON.parse(localStorage.getItem("chatHistory") || "{}");
+        savedChats["1"] = [welcomeMessage];
+        localStorage.setItem("chatHistory", JSON.stringify(savedChats));
+        localStorage.setItem("chatSessionsList", JSON.stringify([restoredWelcomeSession]));
+        localStorage.setItem("lastAccessedSessionId", "1");
       }
 
       // Close modal
@@ -1935,9 +1759,21 @@ export default function ChatPage() {
         return;
       }
 
-      // Welcome session (ID "1") cannot be renamed - this should not be reached
+      // Handle welcome session (ID "1") locally
       if (id === "1") {
-        toast.error("Cannot rename the default welcome session.");
+        console.log("Renaming welcome session locally:", id, "to:", editedName);
+        
+        // Update the session name locally
+        setChatSessions((prev) => {
+          const updated = prev.map((s) => 
+            s.id === id ? { ...s, sessionName: editedName } : s
+          );
+          // Save updated sessions to localStorage
+          localStorage.setItem("chatSessionsList", JSON.stringify(updated));
+          return updated;
+        });
+
+        toast.success("Session renamed successfully!");
         setEditingSessionId(null);
         setEditedName("");
         return;
@@ -2149,15 +1985,13 @@ export default function ChatPage() {
                           <MoreHorizontal className="w-3 h-3" />
                         </Button>
                       </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {session.id !== "1" && (
-                            <DropdownMenuItem
-                              onClick={() => handleRenameSession(session.id)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Rename
-                            </DropdownMenuItem>
-                          )}
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => handleRenameSession(session.id)}
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
+                          Rename
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => setDeleteChatSessionModal(true)}
@@ -2658,7 +2492,7 @@ export default function ChatPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteChatSessionModal(false)}
+              onClick={() => setExportChatSessionModal(false)}
             >
               Cancel
             </Button>
